@@ -4,26 +4,46 @@
 #=====================================================================================================
 
 
-import xlrd
+#import xlrd
 import datetime 
-import mysql.connector
+#import mysql.connector
 import sys
-import configparser
+import ConfigParser
 import os
+import platform
+
+def findOS():
+    system = platform.system()
+    print "The system is:"
+    print system
+    return system
 
 #Reads the environment variable and creates a path to the Config directory
 #The environment variable is a path to the directories containing different configuration documents
 def readEnv():
     MYROOT = os.getenv('DOJIMA-XLS2DB-ROOT')
     ConfigDir = MYROOT + '\config'
+    #print(ConfigDir)
     return ConfigDir  
     
+def linuxConfigDir():
+    programPath = __file__
+    #print programPath
+    index = programPath.index('/src/cdsxls2db.py')
+    s1 = programPath[:index]
+    ConfigDir = s1 + '/config'
+    return ConfigDir
 
 #Takes the given source from the command line argument and reads the correct column map
-def chooseFile(ConfigDir, source):
-    ICEEUColMap = ConfigDir + '\\xls2db-column-mapping\ICE_Europe\ICE_EU.ini'
-    ICEUSColMap = ConfigDir + '\\xls2db-column-mapping\ICE_US\ICE-US.ini'
-    CMEColMap = ConfigDir + '\\xls2db-column-mapping\CME\CME.ini'
+def chooseFile(ConfigDir, source, system):
+    if system== 'Windows': 
+        ICEEUColMap = ConfigDir + '\\xls2db-column-mapping\ICE_Europe\ICE_EU.ini'
+        ICEUSColMap = ConfigDir + '\\xls2db-column-mapping\ICE_US\ICE-US.ini'
+        CMEColMap = ConfigDir + '\\xls2db-column-mapping\CME\CME.ini'
+    else:
+        ICEEUColMap = ConfigDir + '/xls2db-column-mapping/ICE_Europe/ICE_EU.ini'
+        ICEUSColMap = ConfigDir + '/xls2db-column-mapping/ICE_US/ICE-US.ini'
+        CMEColMap = ConfigDir + '/xls2db-column-mapping/CME/CME.ini'
     if source == "ICE-Europe":
         return ICEEUColMap
     elif source == "ICE-US":
@@ -37,10 +57,10 @@ def readColMap(source, colMapDoc):
     config.read(colMapDoc)
     colMap = dict()
     try:
-        for key in config[source]:
-            colMap[key] = config[source][key]
+        for key in config.options(source):
+            colMap[key] = config.get(source, key)
         #print("The column map looks like:")
-        #print (colMap)
+        #print colMap
         return colMap
     except: 
         print("There was some error in putting the INI file data into a Python dictionary")
@@ -73,8 +93,11 @@ def colHeadingList(headingrow ,lastcol, source, colMap):
     return colnames    
 
 #Reads the properties document with the login information, and uses it to connect with MySQL
-def connectMySQL(ConfigDir):
-    DBConfigFileName = ConfigDir + "\db\DBConfig.properties"
+def connectMySQL(ConfigDir, system):
+    if system == 'Windows':
+        DBConfigFileName = ConfigDir + "\db\DBConfig.properties"
+    else:
+        DBConfigFileName = ConfigDir + "/db/DBConfig.properties"
     dbprops = {}
     with open(DBConfigFileName, 'r') as f:
         for line in f:
@@ -125,7 +148,6 @@ def floatify(L):
 #Determines the last column of main table of the Excel worksheet in order to avoid reading any extraneous information given in cells outside of the table
 #Assumes the table ends at the first empty cell in the heading row
 #The number of the last column is returned as an int
-#NEEDS EDITTING 
 def findLastColumn(headingrow):
     for a in range (0, sheet.ncols):
         if sheet.cell(headingrow, a).value == '':
@@ -158,7 +180,6 @@ def floatToDate(excelDate):
     return date
 
 #Goes through each cell in the heading row of the Excel worksheet to find the column number of the coupon rate column and returns it as an int
-#NEEDS EDITTING --> read the column name list instead
 def findCouponColumn(headingRow):
     for colHeader in range (0, lastcol):
         #print (sheet.cell((headingRow), colHeader).value)
@@ -252,14 +273,21 @@ def listToString(strlist):
     stringLength = len(strlist)
     if isinstance(strlist[0], str):
         string = "\"" + strlist[0] + "\""
+    elif isinstance(strlist[0], unicode):
+        string = "\"" + strlist[0] + "\""
     else: 
         string =str(strlist[0])
     for index in range (1, stringLength):
         stringItem = str(strlist[index])
+        #print strlist[index]
+        #print type(strlist[index])
         if isinstance(strlist[index], str):
             string = string + ", " + "\"" + stringItem + "\""
+        elif isinstance(strlist[index], unicode):
+            string = string + ", " + "\"" + stringItem + "\""    
         else:
             string = string + ", " + stringItem
+            
     #print(string)
     return string
     
@@ -284,19 +312,23 @@ def findUnwantedColumns(headingrow, coldict):
     return badcol
 
 #Open document
-config = configparser.ConfigParser()
+config =ConfigParser.ConfigParser()
 filename = readCommandLine('-f')
-book = xlrd.open_workbook (filename)
+#book = xlrd.open_workbook (filename)
 
 source = readCommandLine('-s')
 
-ConfigDir = readEnv()
-
+system = findOS()
+if system == 'Windows':
+    ConfigDir = readEnv()
+else:
+    ConfigDir = linuxConfigDir()
+    
 cnx = connectMySQL(ConfigDir)
 
 cur = cnx.cursor()
 
-colMapDoc = chooseFile(ConfigDir, source)
+colMapDoc = chooseFile(ConfigDir, source, system)
 
 colMapDict = readColMap(source, colMapDoc)
 
