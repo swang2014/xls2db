@@ -14,8 +14,8 @@ import platform
 
 def findOS():
     system = platform.system()
-    print "The system is:"
-    print system
+    #print "The system is:"
+    #print system
     return system
 
 #Reads the environment variable and creates a path to the Config directory
