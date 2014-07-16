@@ -4,9 +4,9 @@
 #=====================================================================================================
 
 
-#import xlrd
+import xlrd
 import datetime 
-#import mysql.connector
+import mysql.connector
 import sys
 import ConfigParser
 import os
@@ -27,8 +27,10 @@ def readEnv():
     return ConfigDir  
     
 def linuxConfigDir():
-    programPath = __file__
-    #print programPath
+	
+
+    programPath  = os.path.realpath(__file__) 
+    print programPath
     index = programPath.index('/src/cdsxls2db.py')
     s1 = programPath[:index]
     ConfigDir = s1 + '/config'
@@ -314,7 +316,7 @@ def findUnwantedColumns(headingrow, coldict):
 #Open document
 config =ConfigParser.ConfigParser()
 filename = readCommandLine('-f')
-#book = xlrd.open_workbook (filename)
+book = xlrd.open_workbook (filename)
 
 source = readCommandLine('-s')
 
@@ -324,7 +326,7 @@ if system == 'Windows':
 else:
     ConfigDir = linuxConfigDir()
     
-cnx = connectMySQL(ConfigDir)
+cnx = connectMySQL(ConfigDir, system)
 
 cur = cnx.cursor()
 
@@ -409,7 +411,7 @@ for sheetnumber in range (0, book.nsheets):
                 #print(list)
                 stringColNames = colListString(colnames)
                 stringList = listToString(list)
-                query = ("INSERT INTO cds (%s) VALUES (%s)" % (stringColNames, stringList))
+                query = ("INSERT INTO CDS (%s) VALUES (%s)" % (stringColNames, stringList))
                 #print (query)
                 cur.execute(query)
 
