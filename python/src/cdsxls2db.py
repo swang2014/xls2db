@@ -150,7 +150,7 @@ def colHeadingList(hlist, colMap):
 
 def findUnwantedColumns(hlist, coldict):
     badcol = []
-    for i in range (0, hlist):
+    for i in range (0, len(hlist)):
         string = hlist[i] 
         key = string.lower()
         if key in coldict:
@@ -359,7 +359,7 @@ for sheetnumber in range (0, book.nsheets):
     #print ("The corresponding column headings in MySQL are: ")
     #print (colnames)  
     
-    badcol = findUnwantedColumns((firstrow - 1), colMapDict)
+    badcol = findUnwantedColumns(hList, colMapDict)
     #print("The columns that do not match are:")
     #print(badcol)  
     #Reads excel document by making list of cell values by row
@@ -419,7 +419,7 @@ for sheetnumber in range (0, book.nsheets):
                     stringColNames = colListString(colnames)
                     stringList = listToString(list)
                     sql = ("INSERT INTO CDS (%s) VALUES (%s)" % (stringColNames, stringList))
-                    print (sql)
+                    #print (sql)
                     cur.execute(sql)
     
                     cnx.commit()
