@@ -3,7 +3,6 @@
 #Stephanie Wang
 #=====================================================================================================
 
-
 import xlrd
 import datetime 
 import mysql.connector
@@ -12,9 +11,43 @@ import ConfigParser
 import os
 import platform
 
+#Determines first row of data in the table of the Excel worksheet to avoid reading data from title or heading cells
+#Assumes that title rows have consist of mainly empty cells, the heading row proceeds directly after, and the data after that
+#Returns the number of the first row of data as an int
+def findFirstRow():
+    for b in range (0, sheet.nrows):
+        k = 0
+        for d in range (0, sheet.ncols):
+            if sheet.cell(b, d).value is '':
+                k = k + 1
+        if k < (sheet.ncols - 3):
+            firstrow = b + 1
+            break
+    return firstrow
+
+#Determines the last column of main table of the Excel worksheet in order to avoid reading any extraneous information given in cells outside of the table
+#Assumes the table ends at the first empty cell in the heading row
+#The number of the last column is returned as an int
+def findLastColumn(headingrow):
+    for a in range (0, sheet.ncols):
+        if sheet.cell(headingrow, a).value == '':
+            lastcol = a
+            break
+        else:
+            lastcol = sheet.ncols
+    return lastcol
+
+def removeSpace(string):
+    for i in range (0, len(string)):
+        char = len(string) - (1 + i)
+        if string[char] == ' ':
+            continue
+        else:
+            newString = string[:(char + 1)]
+            return newString
+
 def findOS():
     system = platform.system()
-    #print "The system is:"
     #print system
     return system
 
@@ -23,18 +56,28 @@ def findOS():
 def readEnv():
     MYROOT = os.getenv('DOJIMA-XLS2DB-ROOT')
     ConfigDir = MYROOT + '\config'
-    #print(ConfigDir)
+    print(ConfigDir)
     return ConfigDir  
     
 def linuxConfigDir():
-	
-
-    programPath  = os.path.realpath(__file__) 
-    print programPath
+    programPath = os.path.realpath(__file__)
+    #print programPath
     index = programPath.index('/src/cdsxls2db.py')
     s1 = programPath[:index]
     ConfigDir = s1 + '/config'
     return ConfigDir
+
+#Read command line arguments to find the string, and returns the subsequent argument
+def readCommandLine(string):
+    totalCount = len(sys.argv)
+    index = 0
+    while (index < totalCount):
+        if sys.argv[index] == string:
+            retStr = str(sys.argv[(index + 1)])
+            break
+        else:
+            index += 1
+    return retStr
 
 #Takes the given source from the command line argument and reads the correct column map
 def chooseFile(ConfigDir, source, system):
@@ -53,6 +96,20 @@ def chooseFile(ConfigDir, source, system):
     elif source =="CME":
         return CMEColMap
         
+#Takes the previously generated column mapping dictionary and a single cell in the heading row of the Excel worksheet to find the corresponding MySQL column
+#Returns the name of the corresponding MySQL column
+#When no corresponding column is identified, an error message is printed and the returned value is None
+def useColMap(colMap, string):
+    try:
+        newString = removeSpace(string)
+        key = newString.lower()
+        value = colMap[key]
+        #print(value)
+        return value
+    except:
+        print ("According to the dictionary, there is no corresponding column in MySQL for the column:" + string)
+        value = None
+        return value
 
 #Takes the information from the column map document and returns it into a dictionary        
 def readColMap(source, colMapDoc):
@@ -62,37 +119,45 @@ def readColMap(source, colMapDoc):
         for key in config.options(source):
             colMap[key] = config.get(source, key)
         #print("The column map looks like:")
+        #print (colMap)
         #print colMap
         return colMap
     except: 
         print("There was some error in putting the INI file data into a Python dictionary")
         return colMap
     
-#Read command line arguments to find the string, and returns the subsequent argument
-def readCommandLine(string):
-    totalCount = len(sys.argv)
-    index = 0
-    while (index < totalCount):
-        if sys.argv[index] == string:
-            retStr = str(sys.argv[(index + 1)])
-            break
-        else:
-            index += 1
-    return retStr
-
+def headingRowList(headingRow, lastcol):
+    hlist = []
+    for colHeader in range (0, lastcol):
+        headingValue = sheet.cell(headingRow,colHeader).value
+        newHeadingValue = removeSpace(headingValue)
+        hlist.append(newHeadingValue)
+    return hlist
 
 #Reads the cells of the heading row in an Excel worksheet and returns all the values in a list
-def colHeadingList(headingrow ,lastcol, source, colMap):
+def colHeadingList(hlist, colMap):
     colnames = []
-    for c in range (0, lastcol):
-        #print(sheet.cell(headingrow, c).value)
-        value2 = useColMap(colMap, sheet.cell(headingrow, c).value)
+    for i in range (0, len(hlist)):
+        value2 = useColMap(colMap, hlist[i])
         #print ("Value 2 is: " + str(value2))
         if value2 == None:
             continue
         else:
             colnames.append(value2)
+    colnames.append('DojimaProductType')
+    colnames.append('Market')
     return colnames    
+
+def findUnwantedColumns(hlist, coldict):
+    badcol = []
+    for i in range (0, hlist):
+        string = hlist[i] 
+        key = string.lower()
+        if key in coldict:
+            continue
+        else:
+            badcol.append(i)
+    return badcol
 
 #Reads the properties document with the login information, and uses it to connect with MySQL
 def connectMySQL(ConfigDir, system):
@@ -123,6 +188,14 @@ def connectMySQL(ConfigDir, system):
             
         return cnx
 
+#Takes the date given in the Excel worksheet (in float format) and converts it to proper datetime format
+#Returns the date 
+def floatToDate(excelDate):
+    time_tuple = xlrd.xldate_as_tuple(excelDate, 0)
+    date = datetime.datetime(*time_tuple)
+    #print(date)
+    return date
+
 #Takes a string and separates it into multiple strings based on the placement of a single comma and ampersand, and returns the strings as a list
 #Used to deal with cells in the coupon rate column, where multiple values are given
 def destringify(string):
@@ -147,53 +220,15 @@ def floatify(L):
         retL.append(retNum)
     return retL
 
-#Determines the last column of main table of the Excel worksheet in order to avoid reading any extraneous information given in cells outside of the table
-#Assumes the table ends at the first empty cell in the heading row
-#The number of the last column is returned as an int
-def findLastColumn(headingrow):
-    for a in range (0, sheet.ncols):
-        if sheet.cell(headingrow, a).value == '':
-            lastcol = a
-            break
-        else:
-            lastcol = sheet.ncols
-    return lastcol
-
-#Determines first row of data in the table of the Excel worksheet to avoid reading data from title or heading cells
-#Assumes that title rows have consist of mainly empty cells, the heading row proceeds directly after, and the data after that
-#Returns the number of the first row of data as an int
-def findFirstRow():
-    for b in range (0, sheet.nrows):
-        k = 0
-        for d in range (0, sheet.ncols):
-            if sheet.cell(b, d).value is '':
-                k = k + 1
-        if k < (sheet.ncols - 3):
-            firstrow = b + 1
-            break
-    return firstrow
-
-#Takes the date given in the Excel worksheet (in float format) and converts it to proper datetime format
-#Returns the date 
-def floatToDate(excelDate):
-    time_tuple = xlrd.xldate_as_tuple(excelDate, 0)
-    date = datetime.datetime(*time_tuple)
-    #print(date)
-    return date
-
 #Goes through each cell in the heading row of the Excel worksheet to find the column number of the coupon rate column and returns it as an int
-def findCouponColumn(headingRow):
-    for colHeader in range (0, lastcol):
-        #print (sheet.cell((headingRow), colHeader).value)
-        if sheet.cell(headingRow, colHeader).value == "Coupon ":
-            couponcol = colHeader    
-            break
-        else:
-            couponcol = None
+def findCouponColumn(hlist):
+    if 'Coupon' in hlist:
+        couponcol = hlist.index('Coupon')
+    else:
+        couponcol = None
     return couponcol
     
 #Reads the value from the coupon rate column, deals with the type appropriately, and returns the values as a list of floats
-#NEEDS EDITTING --> needs to be identify which values are already floats, such as the percentage given in the CME document
 def readCouponRate(couponCol):
     fltrate = []
     #Dealing with coupon rate 
@@ -207,6 +242,12 @@ def readCouponRate(couponCol):
         fltrate.append(percoupon)    
     return fltrate
 
+def findClearCol(hlist):
+    if "1st Clearing Week" in hlist:
+        clearCol = hlist.index("1st Clearing Week")
+    else:
+        clearCol = None
+    return clearCol
 
 #Similar function for Excel worksheet cells in the clearing date column that have multiple dates given per cell
 def readClearDate(clearCol):
@@ -221,44 +262,24 @@ def readClearDate(clearCol):
     elif sheet.cell_type(r, clearCol) == 3:
         cdates.append(sheet.cell(r, clearCol).value)
     return cdates
-        
-def findClearCol(headingrow):
-    for colHeader in range (0, lastcol):
-        if sheet.cell(headingrow, colHeader).value == "1st Clearing Week":
-            clearCol = colHeader    
-            break
+
+def findProductType(colnames, list):
+    if 'Sector' in colnames:
+        index =  colnames.index('Sector')
+        sectorValue =  removeSpace(list[index])
+        if sectorValue == 'Government':
+            productType = "Sovereign"
         else:
-            clearCol = None
-    return clearCol
+            productType = "Corporate"       
+    else:
+        productType = "Index"
+    return productType
         
 #Takes a string and returns it with double quotes appended around it
 #Necessary for SQL syntax in insert statement
-#NEEDS EDITTING --> need to actually use
 def addQuotes(string):
     value = "\"" + string + "\""
     return value
-
-#Takes the previously generated column mapping dictionary and a single cell in the heading row of the Excel worksheet to find the corresponding MySQL column
-#Returns the name of the corresponding MySQL column
-#When no corresponding column is identified, an error message is printed and the returned value is None
-def useColMap(colMap, string):
-    try:
-        stringLength = len(string)
-        lastChar = string[(stringLength - 1)]
-        #print (lastChar)
-        if lastChar == ' ':
-            string2 = string[0:len(string)-1]
-            key = string2.lower()
-            
-        else:
-            key = string.lower()
-        value = colMap[key]
-        #print(value)
-        return value
-    except:
-        print ("According to the dictionary, there is no corresponding column in MySQL for the column:" + string)
-        value = None
-        return value
     
 #Takes the list of MySQL column names and returns it in a string format for usage in the insert statement
 def colListString(strlist):
@@ -292,26 +313,6 @@ def listToString(strlist):
             
     #print(string)
     return string
-    
-def findUnwantedColumns(headingrow, coldict):
-    badcol = []
-    for c in range (0, (lastcol - 1)):
-        string = sheet.cell(headingrow, c).value 
-        #quoteSource = "'" + source + "'" 
-        stringLength = len(string)
-        lastChar = string[(stringLength - 1)]
-        #print (lastChar)
-        if lastChar == ' ':
-            string2 = string[0:len(string)-1]
-            key = string2.lower()
-            
-        else:
-            key = string.lower()
-        if key in coldict:
-            continue
-        else:
-            badcol.append(c)
-    return badcol
 
 #Open document
 config =ConfigParser.ConfigParser()
@@ -336,6 +337,7 @@ colMapDict = readColMap(source, colMapDoc)
 
 #Going through all the worksheets
 for sheetnumber in range (0, book.nsheets):
+    
     sheet = book.sheet_by_index(sheetnumber)
     #print ("We are on sheet #: " + str(sheetnumber))
             
@@ -345,13 +347,15 @@ for sheetnumber in range (0, book.nsheets):
     lastcol = findLastColumn(firstrow - 1)
     #print ("The last column is " + str(lastcol))
     
-    couponcol = findCouponColumn((firstrow - 1))
+    hList = headingRowList((firstrow - 1), lastcol)
+    
+    couponcol = findCouponColumn(hList)
     #print("The coupon rate column is column: " + str(couponcol))
     
-    clearCol = findClearCol((firstrow - 1))
+    clearCol = findClearCol(hList)
     #print("The clearing date column is column: " + str(clearCol))
                   
-    colnames = colHeadingList((firstrow - 1), lastcol, source, colMapDict)
+    colnames = colHeadingList(hList, colMapDict)
     #print ("The corresponding column headings in MySQL are: ")
     #print (colnames)  
     
@@ -403,19 +407,22 @@ for sheetnumber in range (0, book.nsheets):
                         list.append(sheet.cell(r,c).value)
                 
         
-            #Figuring out last row
-            if (i+1) >= lastcol:
-                break
+                #Figuring out last row
+                if (i+1) >= lastcol:
+                    break
+        
+                else:
+                    #print(list)
+                    productType = findProductType(colnames, list)
+                    list.append(productType)
+                    list.append(source)
+                    stringColNames = colListString(colnames)
+                    stringList = listToString(list)
+                    sql = ("INSERT INTO CDS (%s) VALUES (%s)" % (stringColNames, stringList))
+                    print (sql)
+                    cur.execute(sql)
     
-            else:
-                #print(list)
-                stringColNames = colListString(colnames)
-                stringList = listToString(list)
-                query = ("INSERT INTO CDS (%s) VALUES (%s)" % (stringColNames, stringList))
-                #print (query)
-                cur.execute(query)
-
-                cnx.commit()
+                    cnx.commit()
 
 
 #Trying to print out what's in the table
