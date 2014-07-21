@@ -86,7 +86,7 @@ def chooseFile(ConfigDir, source, system):
         ICEUSColMap = ConfigDir + '\\xls2db-column-mapping\ICE_US\ICE-US.ini'
         CMEColMap = ConfigDir + '\\xls2db-column-mapping\CME\CME.ini'
     else:
-        ICEEUColMap = ConfigDir + '/xls2db-column-mapping/ICE_Europe/ICE_EU.ini'
+        ICEEUColMap = ConfigDir + '/xls2db-column-mapping/ICE_EUROPE/ICE_EU.ini'
         ICEUSColMap = ConfigDir + '/xls2db-column-mapping/ICE_US/ICE-US.ini'
         CMEColMap = ConfigDir + '/xls2db-column-mapping/CME/CME.ini'
     if source == "ICE-Europe":
